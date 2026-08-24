@@ -1,6 +1,6 @@
 MIT License
 
-Copyright (c) 2026 mahra-alqubaisi
+Copyright (c) 2026 Mahra Alqubaisi
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -11,6 +11,10 @@ furnished to do so, subject to the following conditions:
 
 The above copyright notice and this permission notice shall be included in all
 copies or substantial portions of the Software.
+
+NOTE ON DATA: this licence covers the code only. Watchlist data retrieved at
+runtime remains subject to its own terms. NBCTF and FBI data are sourced via
+OpenSanctions under CC BY-NC 4.0 and are licensed for non-commercial use only.
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
