@@ -1,0 +1,879 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Counterparty Screen — wallet exposure check</title>
+<meta name="description" content="Check an Ethereum wallet for sanctions, scams and suspicious connections. Live mainnet data screened against OFAC, Israel NBCTF, FBI and community watchlists.">
+<meta property="og:title" content="Counterparty Screen">
+<meta property="og:description" content="Check an Ethereum wallet for sanctions, scams and suspicious connections — with the evidence, not just a score.">
+<meta property="og:type" content="website">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ground:#E4E7E2; --panel:#FAFBF9; --ink:#141712; --muted:#6B7168;
+    --rule:#C6CAC1; --clear:#2D5D45; --review:#9A6B14; --flag:#8F2317;
+    --shadow:rgba(20,23,18,.09);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{background:var(--ground);color:var(--ink);font-family:"IBM Plex Sans",system-ui,sans-serif;font-size:16px;line-height:1.5;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:760px;margin:0 auto;padding:28px 18px 80px}
+  header{margin-bottom:26px}
+  .eyebrow{font-family:"IBM Plex Mono",monospace;font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);margin-bottom:10px}
+  h1{font-family:"Bricolage Grotesque",sans-serif;font-weight:800;font-size:clamp(30px,7.5vw,44px);line-height:1.02;letter-spacing:-.02em;margin:0 0 12px}
+  .sub{color:var(--muted);font-size:15px;max-width:52ch;margin:0}
+  .query{margin:22px 0 8px}
+  label{display:block;font-family:"IBM Plex Mono",monospace;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin-bottom:7px}
+  input[type=text]{width:100%;padding:14px 13px;font-family:"IBM Plex Mono",monospace;font-size:14px;background:var(--panel);color:var(--ink);border:1.5px solid var(--ink);border-radius:0;outline:none}
+  input[type=text]:focus{box-shadow:0 0 0 3px rgba(20,23,18,.16)}
+  button{margin-top:10px;width:100%;padding:14px;font-family:"IBM Plex Mono",monospace;font-size:13px;letter-spacing:.1em;text-transform:uppercase;font-weight:600;background:var(--ink);color:var(--ground);border:1.5px solid var(--ink);border-radius:0;cursor:pointer}
+  button:disabled{opacity:.45;cursor:default}
+  button:focus-visible,input:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+  .samples{margin-top:12px;font-size:13px;color:var(--muted)}
+  .samples a{color:var(--ink);text-decoration:underline;text-underline-offset:2px;cursor:pointer;margin-right:14px;display:inline-block}
+  .status{margin-top:20px;font-family:"IBM Plex Mono",monospace;font-size:12.5px;color:var(--muted);border-left:2px solid var(--rule);padding-left:11px}
+  .status.err{color:var(--flag);border-color:var(--flag)}
+  .status p{margin:3px 0}
+  .status .ok{color:var(--clear)}
+  .status .bad{color:var(--flag)}
+  .slip{margin-top:26px;background:var(--panel);border:1.5px solid var(--ink);box-shadow:5px 5px 0 var(--shadow);display:none}
+  .slip.on{display:block}
+  .slip-head{padding:16px 16px 14px;border-bottom:1.5px solid var(--ink)}
+  .slip-head .addr{font-family:"IBM Plex Mono",monospace;font-size:12px;word-break:break-all;color:var(--muted);margin-bottom:9px}
+  .verdict{font-family:"Bricolage Grotesque",sans-serif;font-weight:800;font-size:clamp(26px,7vw,38px);line-height:1;letter-spacing:-.02em}
+  .verdict.clear{color:var(--clear)} .verdict.review{color:var(--review)} .verdict.high{color:var(--flag)}
+  .verdict-note{font-size:14.5px;margin-top:9px;max-width:56ch}
+  .meter{display:flex;gap:4px;margin-top:14px}
+  .meter i{flex:1;height:7px;background:var(--rule);display:block}
+  .meter i.lit.clear{background:var(--clear)} .meter i.lit.review{background:var(--review)} .meter i.lit.high{background:var(--flag)}
+  section{border-bottom:1px solid var(--rule);padding:16px}
+  section:last-child{border-bottom:none}
+  h2{font-family:"IBM Plex Mono",monospace;font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);margin:0 0 12px;font-weight:600}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:14px 16px}
+  .cell .k{font-family:"IBM Plex Mono",monospace;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+  .cell .v{font-family:"IBM Plex Mono",monospace;font-size:17px;font-weight:500;margin-top:2px}
+  .cell .v small{font-size:11px;color:var(--muted);font-weight:400}
+  .check{display:flex;align-items:baseline;gap:10px;padding:9px 0;border-bottom:1px dotted var(--rule);font-size:14.5px}
+  .check:last-child{border-bottom:none}
+  .check .mark{font-family:"IBM Plex Mono",monospace;font-weight:600;font-size:12px;letter-spacing:.06em;flex:0 0 auto;min-width:52px}
+  .mark.no{color:var(--clear)} .mark.yes{color:var(--flag)}
+  .finding{border:1px solid var(--rule);padding:12px;margin-bottom:11px;background:#fff}
+  .finding .top{font-family:"IBM Plex Mono",monospace;font-size:12px;word-break:break-all;margin-bottom:9px}
+  .finding .top a{color:var(--ink)}
+  .fbits{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:9px}
+  .bit{font-family:"IBM Plex Mono",monospace;font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;border:1px solid var(--rule);padding:3px 7px;color:var(--muted)}
+  .bit.inb{border-color:var(--flag);color:var(--flag)}
+  .weights{font-family:"IBM Plex Mono",monospace;font-size:11.5px;color:var(--muted);line-height:1.7}
+  .weights b{color:var(--ink);font-weight:600}
+  .skipped{font-family:"IBM Plex Mono",monospace;font-size:11.5px;color:var(--muted);line-height:1.7;word-break:break-all}
+  .note{font-size:13px;color:var(--muted);margin-top:12px;line-height:1.55}
+  details.drill{border:1px solid var(--rule);background:#fff;margin-bottom:11px}
+  details.drill>summary{list-style:none;cursor:pointer;padding:12px;font-size:14.5px;display:flex;gap:9px;align-items:baseline}
+  details.drill>summary::-webkit-details-marker{display:none}
+  details.drill>summary .chev{font-family:"IBM Plex Mono",monospace;color:var(--muted);margin-left:auto;font-size:12px}
+  details.drill[open]>summary{border-bottom:1px solid var(--rule)}
+  .drillbody{padding:12px}
+  .path{margin:0 0 14px}
+  .path .node{display:flex;gap:10px;align-items:flex-start;font-family:"IBM Plex Mono",monospace;font-size:11.5px;word-break:break-all}
+  .path .dot{flex:0 0 auto;width:9px;height:9px;border-radius:50%;margin-top:5px;background:var(--muted)}
+  .path .dot.you{background:var(--ink)}
+  .path .dot.bad{background:var(--flag)}
+  .path .stem{margin-left:4px;border-left:1px solid var(--rule);height:16px}
+  .path .lbl{font-family:"IBM Plex Sans",sans-serif;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);display:block;margin-bottom:1px}
+  dl.facts{margin:0;display:grid;grid-template-columns:auto 1fr;gap:5px 12px;font-size:13px}
+  dl.facts dt{font-family:"IBM Plex Mono",monospace;font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);padding-top:2px}
+  dl.facts dd{margin:0;font-family:"IBM Plex Mono",monospace;font-size:12.5px;word-break:break-all}
+  dl.facts dd.none{color:var(--muted);font-style:italic;font-family:"IBM Plex Sans",sans-serif;font-size:12.5px}
+  .cats{display:grid;gap:8px}
+  .lv{margin-top:14px;border-top:1px solid var(--rule);padding-top:12px}
+  .lv h3{font-family:"IBM Plex Mono",monospace;font-size:11px;letter-spacing:.14em;text-transform:uppercase;margin:14px 0 6px;color:var(--ink)}
+  .lv .row{font-family:"IBM Plex Mono",monospace;font-size:11px;padding:6px 0;border-bottom:1px dotted var(--rule);word-break:break-all}
+  .lv .row .nm{font-family:"IBM Plex Sans",sans-serif;font-size:12.5px;color:var(--ink);display:block}
+  .lv .row .meta{color:var(--muted);display:block;margin-top:1px}
+  .lv .more{font-size:12.5px;color:var(--muted);margin-top:8px}
+  .cat{display:flex;gap:10px;align-items:baseline;font-size:14px;padding:8px 0;border-bottom:1px dotted var(--rule)}
+  .cat:last-child{border-bottom:none}
+  .cat .st{font-family:"IBM Plex Mono",monospace;font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;flex:0 0 auto;min-width:96px}
+  .cat .st.live{color:var(--clear)} .cat .st.off{color:var(--muted)}
+  .ctx{margin:0;font-size:14.5px;line-height:1.55}
+  button.ghost{background:transparent;color:var(--ink);margin-top:4px}
+  .hopline{font-size:14.5px;margin:0 0 10px}
+  .hopwarn{color:var(--review);font-weight:600}
+  footer{margin-top:30px;font-size:12.5px;color:var(--muted);line-height:1.6}
+  @media (max-width:430px){.grid{grid-template-columns:1fr}}
+  @media (prefers-reduced-motion:no-preference){
+    .slip.on{animation:rise .22s ease-out}
+    @keyframes rise{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="eyebrow">Ethereum mainnet · live data · build 13</div>
+  <h1>Counterparty screen</h1>
+  <p class="sub">Check a wallet for sanctions, scams and suspicious connections.</p>
+</header>
+
+<div class="query">
+  <label for="addr">Wallet address</label>
+  <input id="addr" type="text" placeholder="0x…" autocomplete="off" spellcheck="false">
+  <button id="go">Run screen</button>
+  <div class="samples">
+    <a data-a="0x098B716B8Aaf21512996dC57EB0615e2383E2f96">Try a sanctioned wallet</a>
+    <a data-a="0x28C6c06298d514Db089934071355E5743bf21d60">Try an exchange wallet</a>
+  </div>
+</div>
+
+<div class="status" id="status" style="display:none"></div>
+
+<div class="slip" id="slip">
+  <div class="slip-head">
+    <div class="addr" id="outAddr"></div>
+    <div class="verdict" id="outVerdict"></div>
+    <div class="verdict-note" id="outNote"></div>
+    <div class="meter" id="outMeter"></div>
+  </div>
+
+  <section id="secContext" style="display:none">
+    <h2>Important context</h2>
+    <p class="ctx" id="outContext"></p>
+  </section>
+
+  <section><h2>What we found</h2><div id="outChecks"></div></section>
+
+  <section><h2>Wallet activity</h2><div class="grid" id="outOverview"></div></section>
+
+  <section id="secFindings"><h2>Direct connections</h2><div id="outFindings"></div></section>
+
+  <section id="secHop">
+    <h2>Indirect links</h2>
+    <div id="outHop"></div>
+    <button id="hopGo" class="ghost">Check indirect links</button>
+  </section>
+
+  <section id="secSkipped">
+    <h2>Big services ignored</h2>
+    <div class="skipped" id="outSkipped"></div>
+  </section>
+
+  <section id="secSources">
+    <div class="check" style="border:none;padding:0">
+      <span id="srcCount" style="font-size:14.5px"></span>
+      <button id="viewLists" class="ghost" style="width:auto;margin:0 0 0 auto;padding:0;border:none;font-size:11px;text-decoration:underline;text-underline-offset:2px">View watchlists</button>
+    </div>
+    <div id="listView" style="display:none"></div>
+  </section>
+</div>
+
+<footer id="foot"></footer>
+</div>
+
+<script>
+/* ---------------- sources: each tried in order, first success wins -------- */
+/* ---- watchlists: three separate categories, three separate sources ---- */
+const OS = slug => "https://data.opensanctions.org/datasets/latest/"+slug+"/";
+
+/* NBCTF publishes Hebrew PDFs behind bot protection, so the machine-readable
+   route is the OpenSanctions mirror of the same orders. CC BY-NC 4.0. */
+async function loadOpenSanctions(slug, fallbackLink){
+  const base = OS(slug);
+  const idx = await fetchJSON(base+"index.json");
+  const res = (idx.resources||[]).find(r=>r.name==="entities.ftm.json");
+  const url = (res && res.url) || (base+"entities.ftm.json");
+  const r = await fetch(url);
+  if(!r.ok) throw new Error("HTTP "+r.status);
+  const text = await r.text();
+
+  const people = new Map(), wallets = [];
+  for(const line of text.split("\n")){
+    if(!line.trim()) continue;
+    let e; try{ e = JSON.parse(line); }catch{ continue; }
+    if(e.schema==="Person" || e.schema==="LegalEntity" || e.schema==="Organization"){
+      people.set(e.id, e.caption || (e.properties&&e.properties.name&&e.properties.name[0]));
+    } else if(e.schema==="CryptoWallet"){
+      wallets.push(e);
+    }
+  }
+  return wallets.map(e=>{
+    const pr = e.properties||{};
+    const addr = (pr.publicKey&&pr.publicKey[0]) || e.caption;
+    const holders = (pr.holder||[]).map(h=>people.get(h)).filter(Boolean);
+    return {
+      addr,
+      name: holders.length ? holders.join(", ") : null,
+      network: (pr.currency&&pr.currency[0]) || null,
+      program: (pr.program&&pr.program[0]) || (pr.description&&pr.description[0]) || null,
+      date: e.first_seen ? String(e.first_seen).slice(0,10) : ((pr.createdAt&&String(pr.createdAt[0]).slice(0,10))||null),
+      url: (pr.sourceUrl&&pr.sourceUrl[0]) || fallbackLink
+    };
+  }).filter(w=>w.addr);
+}
+
+const LISTS = [
+  { cat:"sanctions", authority:"nbctf", label:"Israel / NBCTF \u2014 seizure orders",
+    src:"Administrative seizure orders signed by the Israeli Defence Minister, via OpenSanctions",
+    loader: () => loadOpenSanctions("il_mod_crypto", AUTHORITIES.nbctf.link) },
+
+  { cat:"hack", authority:"fbi", label:"U.S. FBI \u2014 Stake.com theft advisory",
+    src:"FBI advisory on the Stake.com theft attributed to the Lazarus Group, via OpenSanctions",
+    loader: () => loadOpenSanctions("us_fbi_lazarus_crypto", AUTHORITIES.fbi.link) },
+
+  { cat:"sanctions", authority:"ofac", label:"U.S. Treasury / OFAC \u2014 sanctions",
+    src:"OFAC Specially Designated Nationals list",
+    url:"https://raw.githubusercontent.com/0xB10C/ofac-sanctioned-digital-currency-addresses/lists/sanctioned_addresses_ETH.json",
+    parse: j => j.map(a => ({addr:a, reason:null, date:null})) },
+
+  { cat:"scam", authority:"community", label:"Scams and phishing",
+    src:"ScamSniffer scam database",
+    url:"https://raw.githubusercontent.com/scamsniffer/scam-database/main/blacklist/combined.json",
+    parse: j => Object.entries(j).flatMap(([domain, addrs]) =>
+      addrs.map(a => ({addr:a, reason:"linked to the scam site "+domain, date:null, domain}))) },
+
+  { cat:"split", authority:"community", label:"Scams, hacks and stolen funds",
+    src:"MyEtherWallet darklist",
+    url:"https://raw.githubusercontent.com/MyEtherWallet/ethereum-lists/master/src/addresses/addresses-darklist.json",
+    /* the darklist mixes categories, so split it on what the comment actually says */
+    parse: j => j.map(e => {
+      const c = (e.comment||"").toLowerCase();
+      const isHack = /hack|exploit|stolen|ransom/.test(c) && !/phish/.test(c);
+      return {addr:e.address, cat: isHack ? "hack" : "scam", reason:e.comment||null, date:e.date||null};
+    }) }
+];
+
+const SEVERITY = {sanctions:1.0, hack:0.7, scam:0.5};
+const TIER_RANK = {sanctions:3, lawenf:2, community:1};
+const CAT_LABEL = {sanctions:"Sanctions", hack:"Hacks and stolen funds", scam:"Scams and phishing"};
+
+/* plain-English framing per category */
+const CAT_PLAIN = {
+  sanctions: {what:"On a government sanctions list", why:"Dealing with it is legally restricted."},
+  hack:      {what:"Linked to a theft",             why:"Money from this address is reported to be stolen."},
+  scam:      {what:"Linked to a scam or phishing site", why:"This address has been used to collect money from victims."}
+};
+
+/* turn a raw list comment into something a non-specialist can read */
+function plainName(meta){
+  if(meta.domain) return "Scam website " + meta.domain;
+  const r = (meta.reason||"").trim();
+  if(!r) return null;
+  const m = r.match(/^([A-Za-z0-9 .'\-]{3,40})(Hacker|Exploit|Scam|Phish)/);
+  if(m) return m[1].replace(/[_\-]+/g," ").trim();
+  return r.length > 60 ? r.slice(0,60)+"\u2026" : r;
+}
+
+const TIERS = {
+  sanctions: {name:"Sanctioned by a government",
+              note:"A legal designation. Dealing with these wallets is restricted or prohibited."},
+  lawenf:    {name:"Attributed to stolen funds by law enforcement",
+              note:"Not a sanctions listing. A police or investigative agency has publicly linked the wallet to a specific theft."},
+  community: {name:"Flagged by community threat intelligence",
+              note:"Volunteer-maintained reports. Useful as a warning, with no legal force."}
+};
+
+const AUTHORITIES = {
+  ofac:  {name:"U.S. Treasury / OFAC", short:"U.S. OFAC", tier:"sanctions",
+          note:"Specially Designated Nationals list", link:"https://sanctionslist.ofac.treas.gov/"},
+  nbctf: {name:"Israel / NBCTF", short:"Israel NBCTF", tier:"sanctions",
+          note:"Administrative seizure orders under the Israeli Anti-Terrorism Law 5776-2016",
+          link:"https://nbctf.mod.gov.il/en/Minister%20Sanctions/PropertyPerceptions/Pages/Blockchain.aspx"},
+  fbi:   {name:"U.S. FBI", short:"FBI", tier:"lawenf",
+          note:"Public advisory attributing wallets to the Lazarus Group (North Korea) after the Stake.com theft",
+          link:"https://www.opensanctions.org/datasets/us_fbi_lazarus_crypto/"},
+  community: {name:"Community threat lists", short:"community list", tier:"community",
+          note:"volunteer-maintained scam and hack reports", link:null}
+};
+const isOfficial = k => AUTHORITIES[k].tier !== "community";
+
+const TARGET_DAYS = 365, MAX_TX = 3000, PAGE_SIZE = 200, MAX_PAGES = 15, RECENT_DAYS = 90;
+
+const INTERMEDIARIES = {
+  "0x28c6c06298d514db089934071355e5743bf21d60":"Binance hot wallet",
+  "0x21a31ee1afc51d94c2efccaa2092ad1028285549":"Binance hot wallet",
+  "0x3f5ce5fbfe3e9af3971dd833d26ba9b5c936f0be":"Binance",
+  "0xdfd5293d8e347dfe59e90efd55b2956a1343963d":"Binance",
+  "0x2910543af39aba0cd09dbb2d50200b3e800a63d2":"Kraken",
+  "0x71660c4005ba85c37ccec55d0c4493e66fe775d3":"Coinbase",
+  "0x503828976d22510aad0201ac7ec88293211d23da":"Coinbase",
+  "0xddfabcdc4d8ffc6d5beaf154f18b778f892a0740":"Coinbase",
+  "0xa9d1e08c7793af67e9d92fe308d5697fb81d3e43":"Coinbase",
+  "0x1522900b6dafac587d499a862861c0869be6e428":"Bitstamp",
+  "0x7a250d5630b4cf539739df2c5dacb4c659f2488d":"Uniswap V2 router",
+  "0xe592427a0aece92de3edee1f18e0157c05861564":"Uniswap V3 router",
+  "0x3fc91a3afd70395cd496c647d5a6cc9d4b2b7fad":"Uniswap universal router",
+  "0x1111111254eeb25477b68fb85ed929f73a960582":"1inch router",
+  "0x881d40237659c251811cec9c364ef91dc08d300c":"Metamask swap router"
+};
+
+const $ = id => document.getElementById(id);
+const lc = s => (s||"").toLowerCase();
+const short = a => a.slice(0,10)+"…"+a.slice(-8);
+const span = h =>
+  h >= 48   ? Math.round(h/24)+" days" :
+  h >= 1.5  ? Math.round(h)+" hours" :
+  h > 0     ? Math.max(1,Math.round(h*60))+" minutes" : "no measurable span";
+const fmt = n => n.toLocaleString("en-US",{maximumFractionDigits:n<1?4:2});
+const log = [];
+function say(isErr){
+  const s = $("status");
+  s.style.display="block";
+  s.className = "status"+(isErr?" err":"");
+  s.innerHTML = log.map(l=>"<p"+(l.k?' class="'+l.k+'"':"")+">"+l.t+"</p>").join("");
+}
+function step(t,k,isErr){ log.push({t,k}); say(isErr); }
+
+async function fetchJSON(url, ms){
+  /* plain fetch with no options object: the sandbox cannot clone AbortSignal */
+  const req = fetch(url).then(async r=>{
+    if(!r.ok) throw new Error("HTTP "+r.status);
+    return r.json();
+  });
+  const timeout = new Promise((_,rej)=>setTimeout(()=>rej(new Error("timed out")), ms||20000));
+  return Promise.race([req, timeout]);
+}
+
+/* ---------------- sanctions ---------------- */
+let WATCH = null;                  /* address -> [entry, entry...] */
+const LIST_STATUS = [];
+
+async function loadLists(){
+  if(WATCH) return WATCH;
+  WATCH = new Map();
+  LIST_STATUS.length = 0;
+  for(const L of LISTS){
+    const t0 = Date.now();
+    try{
+      const rows = L.loader ? await L.loader() : L.parse(await fetchJSON(L.url));
+      let n = 0;
+      for(const r of rows){
+        const key = lc(r.addr);
+        if(!key) continue;
+        const entry = {
+          cat: r.cat || (L.cat==="split" ? "scam" : L.cat),
+          authority: L.authority, src: L.src,
+          name: r.name || null, network: r.network || null,
+          program: r.program || null, reason: r.reason || null,
+          domain: r.domain || null, date: r.date || null, url: r.url || null,
+          evm: /^0x[0-9a-f]{40}$/.test(key)
+        };
+        const list = WATCH.get(key) || [];
+        if(list.some(x=>x.authority===entry.authority)) continue;   /* dedupe within a source */
+        list.push(entry); WATCH.set(key, list); n++;
+      }
+      LIST_STATUS.push({label:L.label, src:L.src, authority:L.authority, live:true, n,
+                        refreshed:new Date(), ms:Date.now()-t0});
+      step("\u2713 "+L.label+" \u2014 "+n+" addresses","ok");
+    }catch(e){
+      LIST_STATUS.push({label:L.label, src:L.src, authority:L.authority, live:false, err:e.message});
+      step("\u2717 "+L.label+" \u2014 "+e.message,"bad");
+    }
+  }
+  REFRESHED = new Date();
+  if(!WATCH.size) throw new Error("No watchlist could be loaded.");
+  return WATCH;
+}
+
+/* the entry that decides the verdict: official authorities and sanctions outrank community lists */
+const primary = entries => entries.slice().sort((x,y)=>
+  (TIER_RANK[AUTHORITIES[y.authority].tier]-TIER_RANK[AUTHORITIES[x.authority].tier]) ||
+  (SEVERITY[y.cat]-SEVERITY[x.cat]))[0];
+
+/* ---------------- chain data: three providers, normalised ---------------- */
+const toEth = wei => { try{ return Number(BigInt(wei||"0"))/1e18; }catch{ return 0; } };
+
+const CHAIN_SOURCES = [
+  { name:"Blockscout (etherscan-compatible)",
+    /* pages until we've covered TARGET_DAYS or hit the cap */
+    run: async addr => {
+      let out=[], truncated=false, exhausted=false;
+      for(let page=1; page<=MAX_PAGES; page++){
+        const d = await fetchJSON("https://eth.blockscout.com/api?module=account&action=txlist&address="
+          + addr + "&sort=desc&page=" + page + "&offset=" + PAGE_SIZE);
+        const rows = Array.isArray(d.result) ? d.result : null;
+        if(!rows) { if(page===1) throw new Error(d.message||"no result"); exhausted=true; break; }
+        out = out.concat(rows.map(t=>({
+          from: lc(t.from), to: lc(t.to), hash: t.hash,
+          eth: toEth(t.value), ts: t.timeStamp ? new Date(+t.timeStamp*1000) : null
+        })));
+        if(rows.length < PAGE_SIZE){ exhausted=true; break; }
+        const oldest = out[out.length-1].ts;
+        const days = oldest ? (Date.now()-oldest)/864e5 : 0;
+        if(days >= TARGET_DAYS) break;
+        if(out.length >= MAX_TX){ truncated=true; break; }
+        if(page===MAX_PAGES) truncated=true;
+      }
+      return {txs:out, exhausted, truncated};
+    }},
+  { name:"Blockscout v2",
+    run: async addr => {
+      let items=[], params=null, exhausted=false, truncated=false;
+      for(let p=0;p<MAX_PAGES;p++){
+        let u = "https://eth.blockscout.com/api/v2/addresses/"+addr+"/transactions";
+        if(params) u += "?"+new URLSearchParams(params).toString();
+        const d = await fetchJSON(u);
+        items = items.concat(d.items||[]);
+        params = d.next_page_params;
+        if(!params){ exhausted=true; break; }
+        const last = items[items.length-1];
+        const days = last && last.timestamp ? (Date.now()-new Date(last.timestamp))/864e5 : 0;
+        if(days >= TARGET_DAYS) break;
+        if(items.length >= MAX_TX){ truncated=true; break; }
+        if(p===MAX_PAGES-1) truncated=true;
+      }
+      return {txs: items.map(t=>({
+        from: lc(t.from&&t.from.hash), to: lc(t.to&&t.to.hash), hash: t.hash,
+        eth: toEth(t.value), ts: t.timestamp? new Date(t.timestamp): null
+      })), exhausted, truncated};
+    }},
+  { name:"Ethplorer",
+    run: async addr => {
+      const d = await fetchJSON("https://api.ethplorer.io/getAddressTransactions/"+addr+"?apiKey=freekey&limit=50");
+      if(!Array.isArray(d)) throw new Error((d&&d.error&&d.error.message)||"no result");
+      return {txs: d.map(t=>({
+        from: lc(t.from), to: lc(t.to), hash: t.hash,
+        eth: Number(t.value)||0, ts: t.timestamp? new Date(t.timestamp*1000): null
+      })), exhausted:false, truncated:true};
+    }}
+];
+
+async function loadChain(addr){
+  const errs=[];
+  for(const s of CHAIN_SOURCES){
+    try{
+      const r = await s.run(addr);
+      if(!r.txs.length && !r.exhausted) throw new Error("no transactions returned");
+      const oldest = r.txs.reduce((o,t)=> t.ts && (!o||t.ts<o) ? t.ts : o, null);
+      const hours = oldest ? (Date.now()-oldest)/36e5 : 0;
+      step("\u2713 "+s.name+" \u2014 "+r.txs.length+" transactions covering "+span(hours),"ok");
+      return {...r, coverageHours: hours, coverageDays: Math.floor(hours/24)};
+    }catch(e){ errs.push(s.name+": "+e.message); step("\u2717 "+s.name+" \u2014 "+e.message,"bad"); }
+  }
+  throw new Error("No chain data source reachable. "+errs.join(" | "));
+}
+
+/* ---------------- scoring ----------------
+   1 direction  money IN weighs more than money OUT
+   2 value      share of volume, not number of transactions
+   3 recency    recent exposure weighs more than old
+-----------------------------------------------------------*/
+const W_IN=3.0, W_OUT=1.5;
+const recencyWeight = d =>
+  d<=RECENT_DAYS ? {w:1.0,label:"within 90 days"} :
+  d<=365         ? {w:0.6,label:"within 12 months"} :
+                   {w:0.3,label:"older than 12 months"};
+
+function analyse(addr, chain, watch){
+  const txs = chain.txs;
+  const me=lc(addr), cps=new Map(), skipped=new Map();
+  let inVol=0,outVol=0,oldest=null,newest=null;
+  for(const t of txs){
+    if(t.ts){ if(!oldest||t.ts<oldest) oldest=t.ts; if(!newest||t.ts>newest) newest=t.ts; }
+    const inbound = t.to===me;
+    const other = inbound ? t.from : t.to;
+    if(!other||other===me) continue;
+    if(inbound) inVol+=t.eth; else outVol+=t.eth;
+    if(INTERMEDIARIES[other]){ skipped.set(other,INTERMEDIARIES[other]); continue; }
+    const entries = watch.get(other);
+    if(!entries) continue;
+    const meta = primary(entries);
+    const c = cps.get(other)||{addr:other,inVal:0,outVal:0,n:0,last:null,meta,entries};
+    if(inbound) c.inVal+=t.eth; else c.outVal+=t.eth;
+    c.n++; if(t.ts&&(!c.last||t.ts>c.last)){ c.last=t.ts; c.lastHash=t.hash; c.lastEth=t.eth; c.lastDir=inbound?'received':'sent'; }
+    cps.set(other,c);
+  }
+  const now=Date.now();
+  const findings=[...cps.values()].map(c=>{
+    const days=c.last?Math.floor((now-c.last)/864e5):999;
+    const rec=recencyWeight(days);
+    const inSh=inVol>0?c.inVal/inVol:0, outSh=outVol>0?c.outVal/outVol:0;
+    return {...c,days,rec,inSh,outSh,score:(inSh*W_IN+outSh*W_OUT)*rec.w*SEVERITY[c.meta.cat]};
+  }).sort((a,b)=>b.score-a.score);
+  return {findings,skipped,inVol,outVol,oldest,
+    directMatch: watch.get(me) ? primary(watch.get(me)) : null, directEntries: watch.get(me)||null, isIntermediary:INTERMEDIARIES[me]||null,
+    score:findings.reduce((s,f)=>s+f.score,0), txSeen:txs.length,
+    coverageDays: chain.coverageDays, coverageHours: chain.coverageHours, rawTxs: txs, truncated: chain.truncated, exhausted: chain.exhausted};
+}
+
+const SHALLOW = 90;      /* days of history below which a thin sample proves nothing */
+const DENSE   = 400;     /* transactions above which the sample is meaningful even if short */
+
+/* what the sample actually entitles us to say */
+function basis(a){
+  if(a.exhausted)                return {ok:true,  text:"across this wallet's entire history"};
+  if(a.coverageDays >= SHALLOW)  return {ok:true,  text:"across the last "+a.coverageDays+" days of activity"};
+  if(a.txSeen >= DENSE)          return {ok:true,  text:"across "+a.txSeen+" transactions — every movement in the last "+span(a.coverageHours)};
+  return {ok:false, text:"only "+a.txSeen+" transactions covering "+span(a.coverageHours)};
+}
+
+const band = a => {
+  const b = basis(a);
+  if(a.directMatch){
+    const m = a.directMatch, auth = AUTHORITIES[m.authority];
+    const all = (a.directEntries||[]).map(e=>AUTHORITIES[e.authority].short);
+    return {k:"high",lit:4,
+      word: auth.tier==="sanctions" ? "Direct match \u2014 "+auth.short
+          : auth.tier==="lawenf"    ? "Linked to stolen funds \u2014 "+auth.short
+          : m.cat==="hack" ? "Flagged as stolen funds" : "Flagged as a scam address",
+      note:(auth.tier==="sanctions" ? "This wallet is itself on a government sanctions list, published by "+auth.name+"."
+         : auth.tier==="lawenf"    ? "This wallet has been publicly attributed to a theft by "+auth.name+". That is an investigative finding, not a sanctions designation."
+         : "This wallet has been reported by "+auth.name+".")
+        + (m.name ? " Held by "+m.name+"." : "")
+        + (all.length>1 ? " It also appears on: "+all.filter(x=>x!==auth.short).join(", ")+"." : "")};
+  }
+  const top = a.findings[0];
+  if(a.score >= 0.20) return {k:"high",lit:4,
+    word:"Direct link \u2014 "+AUTHORITIES[top.meta.authority].short,
+    note:"This wallet dealt directly with a wallet "
+      + (AUTHORITIES[top.meta.authority].tier==="sanctions" ? "sanctioned by "
+       : AUTHORITIES[top.meta.authority].tier==="lawenf" ? "attributed to a theft by " : "reported by ")
+      + AUTHORITIES[top.meta.authority].name+", "+b.text+"."};
+  if(a.score > 0) return {k:"review",lit:2,word:"Worth a closer look",
+    note:"Some contact with listed wallets "+b.text+", but small in value or old."};
+  if(!b.ok) return {k:"review",lit:2,word:"Not enough history to say",
+    note:"Nothing found, but the sample is "+b.text+" \u2014 too thin to call this wallet clear."};
+  return {k:"clear",lit:1,word:"No direct link found",
+    note:"No contact with any listed wallet "+b.text+"."
+      + (a.exhausted ? "" : " High-turnover wallets are screened on recent flow rather than full history.")};
+};
+
+
+const txLink = h => h ? '<a href="https://eth.blockscout.com/tx/'+h+'" target="_blank" rel="noopener">View transaction</a>' : '';
+const dt = d => d ? new Date(d).toLocaleDateString("en-GB",{day:"numeric",month:"short",year:"numeric"}) : "unknown";
+
+function entryHeadline(meta){
+  const auth = AUTHORITIES[meta.authority];
+  const plain = meta.name || plainName(meta), p = CAT_PLAIN[meta.cat];
+  return '<div style="margin-bottom:10px">'
+    + '<div style="font-weight:600;font-size:15px">'+(plain || p.what)+'</div>'
+    + '<div style="color:var(--muted);font-size:13.5px">'
+    +   (auth.tier==="sanctions" ? "Listed by "+auth.name
+       : auth.tier==="lawenf"    ? "Attributed by "+auth.name
+       : "Reported by "+auth.name)+' \u2014 '+p.why+'</div>'
+    + (meta.reason && meta.reason!==plain
+        ? '<div style="color:var(--muted);font-size:11.5px;margin-top:4px;font-family:\'IBM Plex Mono\',monospace">Technical note: '+meta.reason+'</div>' : '')
+    + '</div>';
+}
+
+function entryFacts(addr, meta, tx, entries){
+  const auth = AUTHORITIES[meta.authority];
+  const rows = [["Wallet address", addr]];
+  if(meta.name) rows.push(["Named person or group", meta.name]);
+  else if(meta.cat==="sanctions") rows.push(["Named person or group", null]);
+  if(meta.network) rows.push(["Network", meta.network]);
+  rows.push(["Listed by", auth.name]);
+  rows.push(["Type of listing", TIERS[auth.tier].name]);
+  rows.push(["Legal basis", auth.note]);
+  rows.push(["Order or programme", meta.program || null]);
+  if(meta.domain) rows.push(["Scam website", meta.domain]);
+  rows.push(["Date published", meta.date || null]);
+  rows.push(["Source", meta.url ? '<a href="'+meta.url+'" target="_blank" rel="noopener">'+meta.src+'</a>'
+                                : (auth.link ? '<a href="'+auth.link+'" target="_blank" rel="noopener">'+meta.src+'</a>' : meta.src)]);
+  if(tx){
+    rows.push(["Money moved", (tx.dir||"")+" "+fmt(tx.eth)+" ETH"]);
+    rows.push(["Asset","ETH"]);
+    rows.push(["Date", dt(tx.ts)]);
+    if(tx.hash) rows.push(["Evidence", txLink(tx.hash)]);
+  }
+  let extra = "";
+  if(entries && entries.length>1){
+    extra = '<div style="margin-top:10px;font-size:13px">This wallet appears on more than one list:<ul style="margin:6px 0 0 18px;padding:0">'
+      + entries.map(e=>'<li>'+AUTHORITIES[e.authority].name+' \u2014 '+TIERS[AUTHORITIES[e.authority].tier].name.toLowerCase()
+          +(e.date? ", "+e.date:"")+'</li>').join("")
+      + '</ul></div>';
+  }
+  return entryHeadline(meta) + '<dl class="facts">'+rows.map(([k,v]) =>
+    "<dt>"+k+"</dt>"+(v==null ? '<dd class="none">not published in this dataset</dd>' : "<dd>"+v+"</dd>")
+  ).join("")+"</dl>" + extra;
+}
+
+function pathBlock(nodes){
+  let html = '<div class="path">';
+  nodes.forEach((n,i)=>{
+    html += '<div class="node"><span class="dot '+(n.kind||"")+'"></span><span>'
+         +  '<span class="lbl">'+n.label+'</span>'+n.addr
+         +  (n.sub? '<span style="display:block;font-family:\'IBM Plex Sans\',sans-serif;color:var(--muted);font-size:12px;margin-top:2px">'+n.sub+'</span>':'')
+         +  '</span></div>';
+    if(i<nodes.length-1){
+      const leg = nodes[i].leg;
+      html += '<div class="stem"></div>';
+      if(leg) html += '<div style="margin:-12px 0 4px 22px;font-size:12.5px;color:var(--muted)">\u2193 '
+              + leg.dir+' '+fmt(leg.eth)+' ETH'+(leg.ts? ' \u2014 '+dt(leg.ts):'')
+              + (leg.hash? ' \u00b7 '+txLink(leg.hash):'')+'</div>';
+    }
+  });
+  return html+'</div>';
+}
+
+let LAST = null, REFRESHED = null;
+
+async function renderWatchlists(boxId, btnId){
+  boxId = boxId || "listView"; btnId = btnId || "viewLists";
+  const box = $(boxId), btn = $(btnId);
+  if(box.style.display==="block"){ box.style.display="none"; btn.textContent="View watchlists"; return; }
+  if(!WATCH){
+    btn.textContent = "Loading\u2026";
+    try{ await loadLists(); }
+    catch(e){ box.style.display="block"; box.innerHTML='<p class="more">Could not load the lists: '+e.message+'</p>'; btn.textContent="View watchlists"; return; }
+  }
+
+  const byAuth = {};
+  for(const [addr, entries] of WATCH){
+    for(const e of entries){
+      (byAuth[e.authority] = byAuth[e.authority] || []).push([addr, e]);
+    }
+  }
+  const SHOW = 40;
+  let html = '<div class="lv">';
+  for(const tier of ["sanctions","lawenf","community"]){
+   const keysInTier = Object.keys(AUTHORITIES).filter(k=>AUTHORITIES[k].tier===tier && byAuth[k]);
+   if(!keysInTier.length) continue;
+   html += '<h3 style="border-bottom:1px solid var(--ink);padding-bottom:4px">'+TIERS[tier].name+'</h3>'
+        + '<p class="more">'+TIERS[tier].note+'</p>';
+   for(const key of keysInTier){
+    const rows = byAuth[key]; if(!rows || !rows.length) continue;
+    const auth = AUTHORITIES[key];
+    const st = LIST_STATUS.filter(x=>x.authority===key && x.live);
+    const when = st.length ? st[0].refreshed.toLocaleString("en-GB") : "unknown";
+    const evm = rows.filter(([,e])=>e.evm).length;
+    html += '<h3>'+auth.name+'</h3>'
+      + '<p class="more">'+auth.note+'<br>'+rows.length+' wallets loaded \u00b7 '+evm+' on Ethereum \u00b7 last refreshed '+when
+      + (auth.link? ' \u00b7 <a href="'+auth.link+'" target="_blank" rel="noopener">official source</a>':'')+'</p>';
+    html += rows.slice(0,SHOW).map(([addr,e])=>
+      '<div class="row">'
+      + '<span class="nm">'+(e.name || plainName(e) || CAT_PLAIN[e.cat].what)+'</span>'
+      + addr
+      + '<span class="meta">'+[e.network, e.program, e.date? "published "+e.date : null, e.src]
+          .filter(Boolean).join(" \u00b7 ")+'</span>'
+      + '</div>').join("");
+    if(rows.length>SHOW) html += '<p class="more">\u2026 and '+(rows.length-SHOW)+' more from this authority.</p>';
+   }
+  }
+  const failed = LIST_STATUS.filter(x=>!x.live);
+  if(failed.length) html += '<p class="more" style="color:var(--flag)">Did not load: '
+      + failed.map(f=>f.label+" ("+f.err+")").join("; ")+'</p>';
+  box.innerHTML = html+'</div>';
+  box.style.display="block";
+  btn.textContent="Hide watchlists";
+}
+
+function render(addr,a){
+  LAST = {addr, a};
+  const b=band(a);
+  $("outAddr").textContent=addr;
+  $("outVerdict").textContent=b.word;
+  $("outVerdict").className="verdict "+b.k;
+  $("outNote").textContent=b.note;
+  $("outMeter").innerHTML=[0,1,2,3].map(i=>'<i class="'+(i<b.lit?"lit "+b.k:"")+'"></i>').join("");
+
+  if(a.isIntermediary){
+    $("secContext").style.display="block";
+    $("outContext").textContent="This is a known "+a.isIntermediary+", used by very many customers. What it does is the sum of thousands of people, so the result says nothing about any one of them.";
+  } else $("secContext").style.display="none";
+
+  const inF  = a.findings.filter(f=>f.inVal>0);
+  const outF = a.findings.filter(f=>f.outVal>0);
+  const rows = [
+    [!!a.directMatch,
+      "Wallet itself is listed by "+(a.directMatch? AUTHORITIES[a.directMatch.authority].short : ""),
+      "Wallet itself is not on any watchlist"],
+    [outF.length>0,
+      "Sent funds to "+outF.length+" listed wallet"+(outF.length===1?"":"s"),
+      "Did not send funds to any listed wallet"],
+    [inF.length>0,
+      "Received funds from "+inF.length+" listed wallet"+(inF.length===1?"":"s"),
+      "No incoming payments from listed wallets found"]
+  ];
+  $("outChecks").innerHTML = rows.map(([hit,yes,no])=>
+    '<div class="check"><span class="mark '+(hit?"yes":"no")+'">'+(hit?"\u274C":"\u2705")+'</span><span>'+(hit?yes:no)+'</span></div>'
+  ).join("");
+
+  $("outOverview").innerHTML=[
+    ["Transactions checked", a.txSeen+(a.exhausted?" <small>all of them</small>":"")],
+    ["Oldest one checked", a.coverageHours < 20 ? "today" : span(a.coverageHours)+" ago"],
+    ["ETH received", fmt(a.inVol)],
+    ["ETH sent", fmt(a.outVol)]
+  ].map(([k,v])=>'<div class="cell"><div class="k">'+k+'</div><div class="v">'+v+'</div></div>').join("");
+
+  const live = LIST_STATUS.filter(c=>c.live);
+  $("srcCount").textContent = "Sources checked: "+live.length+" watchlist"+(live.length===1?"":"s");
+
+  if(!a.findings.length){ $("secFindings").style.display="none"; }
+  else{
+    $("secFindings").style.display="block";
+    const totOut = a.findings.reduce((t,f)=>t+f.outVal,0);
+    const totIn  = a.findings.reduce((t,f)=>t+f.inVal,0);
+    const biggest = a.findings.reduce((m,f)=>Math.max(m, f.inVal||f.outVal), 0);
+    const recent  = a.findings.reduce((m,f)=>(f.last && (!m||f.last>m)) ? f.last : m, null);
+    const auths = [...new Set(a.findings.map(f=>AUTHORITIES[f.meta.authority].short))];
+
+    const summary =
+      '<div class="cell" style="margin-bottom:12px">'
+      + '<div class="v" style="font-size:19px">'+a.findings.length+' direct connection'+(a.findings.length===1?"":"s")+'</div>'
+      + '<div style="color:var(--muted);font-size:13px;margin-top:2px">to wallets listed by '+auths.join(", ")+'</div></div>'
+      + '<dl class="facts">'
+      + (totOut>0 ? '<dt>Total sent</dt><dd>'+fmt(totOut)+' ETH</dd>' : '')
+      + (totIn>0  ? '<dt>Total received</dt><dd>'+fmt(totIn)+' ETH</dd>' : '')
+      + '<dt>Largest</dt><dd>'+fmt(biggest)+' ETH</dd>'
+      + '<dt>Most recent</dt><dd>'+dt(recent)+'</dd>'
+      + '</dl>';
+
+    const each = a.findings.map(f=>{
+      const dir = f.inVal>0 ? "received" : "sent";
+      const tx = {ts: f.last, eth: f.inVal>0?f.inVal:f.outVal, dir: dir, hash: f.lastHash};
+      const icon = f.meta.cat==="sanctions" ? "\u274C" : "\u26A0\uFE0F";
+      return '<details class="drill"><summary><span>'+icon+' '+AUTHORITIES[f.meta.authority].short+' \u2014 '+dir+' '+fmt(tx.eth)+' ETH</span><span class="chev">tap</span></summary>'
+        + '<div class="drillbody">'
+        + pathBlock([
+            {label:"Wallet being screened", addr:LAST.addr, kind:"you",
+             leg:{dir:f.lastDir||dir, eth:f.lastEth||tx.eth, ts:f.last, hash:f.lastHash}},
+            {label:"Flagged wallet", addr:f.addr, kind:"bad", sub:(f.meta.name||plainName(f.meta)||CAT_PLAIN[f.meta.cat].what)}
+          ])
+        + entryFacts(f.addr, f.meta, tx, f.entries)
+        + '</div></details>';
+    }).join("");
+
+    $("outFindings").innerHTML = summary
+      + '<details class="drill" style="margin-top:4px"><summary><span>View all '+a.findings.length+'</span><span class="chev">tap</span></summary>'
+      + '<div class="drillbody">'+each+'</div></details>'
+      + (a.directMatch ? ''
+         : '<details class="drill" style="margin-top:10px"><summary><span>How the risk score is calculated</span><span class="chev">tap</span></summary>'
+           + '<div class="drillbody"><p class="note" style="margin:0">Money coming in counts double money going out, because receiving from a listed wallet is the more serious direction. Large amounts count more than many small ones \u2014 the measure is share of total volume, not number of payments. Recent activity counts more than old. This wallet scores <strong>'+a.score.toFixed(3)+'</strong>. Anything above 0 is worth a look; 0.20 or more is serious.</p></div></details>');
+  }
+
+  if(a.directMatch){
+    $("secHop").style.display = "none";
+  } else {
+    $("secHop").style.display = "block";
+    $("outHop").innerHTML='<p class="hopline">Not checked yet. This looks at whether the wallets this one dealt with have themselves dealt with a listed address.</p>';
+    $("hopGo").style.display="block"; $("hopGo").disabled=false;
+    $("hopGo").textContent="Check indirect links";
+  }
+
+  if(!a.skipped.size || a.directMatch){ $("secSkipped").style.display="none"; }
+  else{
+    $("secSkipped").style.display="block";
+    $("outSkipped").innerHTML=[...a.skipped.entries()].map(([ad,n])=>n+" \u2014 "+short(ad)).join("<br>");
+  }
+  $("slip").classList.add("on");
+}
+
+/* ---------- second hop: bounded, and honest about being bounded ---------- */
+const HOP_MAX = 12, HOP_TX = 100;
+
+async function hopCheck(){
+  if(!LAST) return;
+  const {addr, a} = LAST;
+  const btn = $("hopGo");
+  btn.disabled = true;
+
+  const me = lc(addr), tally = new Map(), lastWith = new Map();
+  for(const t of a.rawTxs){
+    const inbound = t.to===me, other = inbound ? t.from : t.to;
+    if(!other||other===me||INTERMEDIARIES[other]) continue;
+    tally.set(other, (tally.get(other)||0) + t.eth);
+    const rec = {ts:t.ts, eth:t.eth, hash:t.hash, dir: inbound ? "received" : "sent"};
+    const prev = lastWith.get(other);
+    if(!prev || (rec.ts && prev.ts && rec.ts>prev.ts)) lastWith.set(other, rec);
+  }
+  const targets = [...tally.entries()].sort((x,y)=>y[1]-x[1]).slice(0,HOP_MAX).map(e=>e[0]);
+  if(!targets.length){
+    $("outHop").innerHTML='<p class="hopline">This wallet has no counterparties to follow, once the big services are set aside.</p>';
+    btn.style.display="none"; return;
+  }
+
+  const hits=[];
+  for(let i=0;i<targets.length;i++){
+    btn.textContent = "Checking "+(i+1)+" of "+targets.length+"…";
+    try{
+      const d = await fetchJSON("https://eth.blockscout.com/api?module=account&action=txlist&address="
+        +targets[i]+"&sort=desc&page=1&offset="+HOP_TX);
+      const rows = Array.isArray(d.result)?d.result:[];
+      const linked = new Map();
+      for(const t of rows){
+        const from=lc(t.from), to=lc(t.to);
+        for(const side of [from,to]){
+          const wmAll = WATCH.get(side);
+          if(!side || side===targets[i] || side===me || !wmAll) continue;
+          const wm = primary(wmAll);
+          const rec = {addr:side, meta:wm, entries:wmAll, hash:t.hash, ts:t.timeStamp?new Date(+t.timeStamp*1000):null,
+                       eth:toEth(t.value), dir: to===side ? "sent" : "received"};
+          const prev = linked.get(side);
+          if(!prev || (rec.ts && prev.ts && rec.ts>prev.ts)) linked.set(side, rec);
+        }
+      }
+      if(linked.size) hits.push({via:targets[i], to:[...linked.values()], eth:tally.get(targets[i]), yourTx:lastWith.get(targets[i])});
+    }catch(e){ /* skip unreachable counterparty */ }
+    await new Promise(r=>setTimeout(r,200));
+  }
+
+  btn.style.display="none";
+  if(!hits.length){
+    $("outHop").innerHTML='<p class="hopline">\u2705 None of the '+targets.length+' biggest counterparties had dealt with a listed wallet in their last '+HOP_TX+' transactions.</p>'
+      +'<p class="note">This is a spot check, not a full trace \u2014 only the largest counterparties were followed, and only their recent activity.</p>';
+    return;
+  }
+  $("outHop").innerHTML='<p class="hopline hopwarn">\u26A0\uFE0F Indirect link found</p>'
+    +'<p class="hopline">This wallet dealt with another wallet that had itself dealt with a flagged address. Found through '+hits.length+' of them.</p>'
+    + hits.map(h => h.to.map(t =>
+        '<details class="drill"><summary><span>\u26A0\uFE0F One wallet in between</span><span class="chev">tap</span></summary>'
+        + '<div class="drillbody">'
+        + pathBlock([
+            {label:"Wallet being screened", addr:LAST.addr, kind:"you",
+             leg: h.yourTx ? {dir:h.yourTx.dir, eth:h.yourTx.eth, ts:h.yourTx.ts, hash:h.yourTx.hash} : {dir:"moved", eth:h.eth}},
+            {label:"Wallet in between", addr:h.via,
+             leg:{dir:t.dir, eth:t.eth, ts:t.ts, hash:t.hash}},
+            {label:"Flagged wallet", addr:t.addr, kind:"bad", sub:(plainName(t.meta)||CAT_PLAIN[t.meta.cat].what)}
+          ])
+        + entryFacts(t.addr, t.meta, null, t.entries)
+        + '</div></details>').join("")).join("")
+    +'<p class="note">Being one wallet away is not the same as being involved. It is a reason to look closer, not a conclusion. Only the '+targets.length+' biggest counterparties were followed.</p>';
+}
+
+async function run(){
+  const addr=$("addr").value.trim();
+  $("slip").classList.remove("on");
+  log.length=0;
+  if(!/^0x[a-fA-F0-9]{40}$/.test(addr)){
+    step("That doesn't look like an Ethereum address. It should be 0x followed by 40 characters.","bad",true);
+    return;
+  }
+  $("go").disabled=true;
+  try{
+    const watch=await loadLists();
+    const chain=await loadChain(addr);
+    const txs=chain.txs;
+    if(!txs.length){ step("This wallet has no transactions to screen.","bad",true); }
+    else render(addr,analyse(addr,chain,watch));
+  }catch(e){
+    step("Stopped: "+e.message,"bad",true);
+    step("If the ticks above show data loaded, this is a fault in the page itself, not the network.","bad",true);
+  }
+  $("go").disabled=false;
+}
+
+$("go").addEventListener("click",run);
+$("hopGo").addEventListener("click",hopCheck);
+$("viewLists").addEventListener("click",()=>renderWatchlists("listView","viewLists"));
+$("addr").addEventListener("keydown",e=>{ if(e.key==="Enter") run(); });
+document.querySelectorAll(".samples a").forEach(el=>
+  el.addEventListener("click",()=>{ $("addr").value=el.dataset.a; run(); }));
+
+const SOURCE_LINKS = [
+  ["Ethereum", "https://eth.blockscout.com"],
+  ["U.S. OFAC",        "https://sanctionslist.ofac.treas.gov/"],
+  ["Israel NBCTF",     "https://nbctf.mod.gov.il/en/Minister%20Sanctions/PropertyPerceptions/Pages/Blockchain.aspx"],
+  ["U.S. FBI",         "https://www.opensanctions.org/datasets/us_fbi_lazarus_crypto/"],
+  ["ScamSniffer",      "https://github.com/scamsniffer/scam-database"],
+  ["MyEtherWallet",    "https://github.com/MyEtherWallet/ethereum-lists"]
+];
+$("foot").innerHTML = '<div style="margin-bottom:6px">Built by Mahra \u00b7 <a href="https://github.com/YOUR-USERNAME/counterparty-screen" target="_blank" rel="noopener" style="color:var(--ink)">source on GitHub</a></div>' + "Sources: " + SOURCE_LINKS.map(([n,u]) =>
+  '<a href="'+u+'" target="_blank" rel="noopener" style="color:var(--ink);text-decoration:underline;text-underline-offset:2px">'+n+'</a>'
+).join(" \u00b7 ");
+</script>
+</body>
+</html>
